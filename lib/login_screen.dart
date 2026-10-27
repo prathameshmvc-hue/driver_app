@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'home_screen.dart';
 import 'theme.dart';
+import 'sheet_logger.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -25,9 +26,25 @@ class _LoginScreenState extends State<LoginScreen> {
         : ['caspar_id', 'darkstore_id'];
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('role', _role);
+
     for (final k in keys) {
       await prefs.setString(k, _c[k]!.text.trim());
     }
+
+    // Log login to Google Sheet (fire-and-forget, don't await)
+    logLogin(_role == 'driver'
+        ? {
+      'type': 'driver',
+      'name': _c['name']!.text.trim(),
+      'mobile': _c['mobile']!.text.trim(),
+      'tripId': _c['trip_id']!.text.trim(),
+    }
+        : {
+      'type': 'picker',
+      'casparId': _c['caspar_id']!.text.trim(),
+      'darkstoreId': _c['darkstore_id']!.text.trim(),
+    });
+
     if (!mounted) return;
     Navigator.pushReplacement(
         context, MaterialPageRoute(builder: (_) => const HomeScreen()));
