@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'home_screen.dart';
 import 'theme.dart';
 import 'sheet_logger.dart';
+import 'trips_repo.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -21,6 +22,22 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (_role == 'driver' && verifyTripAtLogin) {
+      try {
+        final t = await fetchTrip(_c['trip_id']!.text.trim());
+        if (t == null) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Trip ID not found')));
+          return;
+        }
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Cannot verify trip. Check internet.')));
+        return;
+      }
+    }
     final keys = _role == 'driver'
         ? ['name', 'mobile', 'trip_id']
         : ['caspar_id', 'darkstore_id'];

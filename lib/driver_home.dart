@@ -4,6 +4,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'location_gate.dart';
 import 'theme.dart';
+import 'trips_repo.dart';
 
 class Stop {
   Stop(this.name, this.type, this.eta, {this.done = false});
@@ -41,18 +42,17 @@ class _TripView extends StatefulWidget {
 }
 
 class _TripViewState extends State<_TripView> {
-  // Mock route. Replace with backend data later.
-  final _stops = [
-    Stop('Bhiwandi Hub', 'SH', '08:00', done: true),
-    Stop('Thane DS', 'DS', '09:15'),
-    Stop('Kalyan DS', 'DS', '10:05'),
-  ];
+  List<Stop> _stops = [];
+  Map<String, dynamic>? _trip;
+  bool _loading = true;
+  String? _error;
   StreamSubscription<Position>? _sub;
   Position? _pos;
 
   @override
   void initState() {
     super.initState();
+    _load();
     _sub = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high, distanceFilter: 10),
@@ -63,6 +63,39 @@ class _TripViewState extends State<_TripView> {
   void dispose() {
     _sub?.cancel();
     super.dispose();
+  }
+
+  // Route column looks like: hubA-ds1-ds2-ds3 (stops joined by '-')
+  List<Stop> _parseRoute(String route) => route
+      .split('-')
+      .map((p) => p.trim())
+      .where((p) => p.isNotEmpty)
+      .map((p) => Stop(p, p.contains('_sh_') ? 'SH' : 'DS', '-'))
+      .toList();
+
+  String _s(String k) => (_trip?[k] ?? '').toString();
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final t = await fetchTrip(widget.tripId);
+      if (!mounted) return;
+      setState(() {
+        _trip = t;
+        _stops = t == null ? [] : _parseRoute((t['route'] ?? '').toString());
+        _error = t == null ? 'Trip not found' : null;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not load trip';
+        _loading = false;
+      });
+    }
   }
 
   void _endTrip() {
@@ -92,6 +125,37 @@ class _TripViewState extends State<_TripView> {
     );
   }
 
+  Widget _content() {
+    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_error != null) {
+      return Center(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(_error!),
+          const SizedBox(height: 8),
+          FilledButton(onPressed: _load, child: const Text('Retry')),
+        ]),
+      );
+    }
+    return ListView.builder(
+      itemCount: _stops.length,
+      itemBuilder: (_, i) {
+        final s = _stops[i];
+        return ListTile(
+          // Demo only: tap a stop to toggle it as reached (live GPS later).
+          onTap: () => setState(() => s.done = !s.done),
+          leading: Icon(
+              s.done ? Icons.check_circle : Icons.radio_button_unchecked,
+              color: s.done ? Colors.green : Colors.grey),
+          title: Text(s.name),
+          subtitle: Text('${s.type} · ETA ${s.eta}'),
+          trailing: Text(s.done ? 'Reached' : 'Pending',
+              style:
+              TextStyle(color: s.done ? Colors.green : Colors.orange)),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Column(children: [
     Container(
@@ -102,6 +166,10 @@ class _TripViewState extends State<_TripView> {
         Text('Trip ${widget.tripId}',
             style: Theme.of(context).textTheme.titleLarge),
         Text('Driver: ${widget.name}'),
+        if (_trip != null) ...[
+          Text('Vehicle: ${_s('vehicleNumber')} · ${_s('vehicleType')}'),
+          Text('Status: ${_s('status')}'),
+        ],
         const SizedBox(height: 6),
         Row(children: [
           Icon(Icons.my_location,
@@ -113,31 +181,12 @@ class _TripViewState extends State<_TripView> {
         ]),
       ]),
     ),
-    Expanded(
-      child: ListView.builder(
-        itemCount: _stops.length,
-        itemBuilder: (_, i) {
-          final s = _stops[i];
-          return ListTile(
-            // Demo only: tap a stop to toggle it as reached.
-            onTap: () => setState(() => s.done = !s.done),
-            leading: Icon(
-                s.done ? Icons.check_circle : Icons.radio_button_unchecked,
-                color: s.done ? Colors.green : Colors.grey),
-            title: Text(s.name),
-            subtitle: Text('${s.type} · ETA ${s.eta}'),
-            trailing: Text(s.done ? 'Reached' : 'Pending',
-                style: TextStyle(
-                    color: s.done ? Colors.green : Colors.orange)),
-          );
-        },
-      ),
-    ),
+    Expanded(child: _content()),
     Padding(
       padding: const EdgeInsets.all(16),
       child: FilledButton.icon(
         style: FilledButton.styleFrom(backgroundColor: Colors.red),
-        onPressed: _endTrip,
+        onPressed: _stops.isEmpty ? null : _endTrip,
         icon: const Icon(Icons.flag),
         label: const Text('End Trip'),
       ),
