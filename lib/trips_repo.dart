@@ -28,3 +28,20 @@ Future<Map<String, dynamic>?> fetchTrip(String refId) async {
   if (r.statusCode != 200) throw Exception('trip ${r.statusCode}');
   return jsonDecode(r.body) as Map<String, dynamic>;
 }
+
+/// Driver: send live location to backend (fire and forget)
+Future<void> sendLocation(
+    String refId, double lat, double lng, double accuracy) async {
+  try {
+    await http
+        .post(Uri.parse('$apiBase/location'),
+        headers: {..._h, 'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'refId': refId,
+          'lat': lat,
+          'lng': lng,
+          'accuracy': accuracy,
+        }))
+        .timeout(const Duration(seconds: 8));
+  } catch (_) {}
+}

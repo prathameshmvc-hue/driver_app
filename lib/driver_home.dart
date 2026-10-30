@@ -48,6 +48,7 @@ class _TripViewState extends State<_TripView> {
   String? _error;
   StreamSubscription<Position>? _sub;
   Position? _pos;
+  Timer? _timer;
 
   @override
   void initState() {
@@ -57,10 +58,17 @@ class _TripViewState extends State<_TripView> {
       locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high, distanceFilter: 10),
     ).listen((p) => setState(() => _pos = p));
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      final p = _pos;
+      if (p != null && _trip != null) {
+        sendLocation(widget.tripId, p.latitude, p.longitude, p.accuracy);
+      }
+    });
   }
 
   @override
   void dispose() {
+    _timer?.cancel();
     _sub?.cancel();
     super.dispose();
   }
