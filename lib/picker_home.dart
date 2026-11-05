@@ -19,6 +19,7 @@ class _PickerHomeState extends State<PickerHome> {
   bool _loading = true;
   String? _error;
   Timer? _timer;
+  String _filter = 'All'; // All, Upcoming, Ongoing, Completed, Cancelled, Other, Arrived
 
   // Arrival alerts. A vehicle alerts once per arrival (refId + arrivedAt).
   final Set<String> _alerted = {};
@@ -79,6 +80,45 @@ class _PickerHomeState extends State<PickerHome> {
     return live is Map && live['arrived'] == true;
   }
 
+  // Sheet "Trip Status" -> picker-friendly group.
+  static String _group(String status) {
+    switch (status.toUpperCase()) {
+      case 'CREATED':
+      case 'CONFIRMED':
+        return 'Upcoming';
+      case 'IN_TRANSIT':
+        return 'Ongoing';
+      case 'COMPLETED':
+        return 'Completed';
+      case 'ABORTED':
+      case 'CANCELLED':
+        return 'Cancelled';
+      default:
+        return 'Other';
+    }
+  }
+
+  static Color _groupColor(String group) {
+    switch (group) {
+      case 'Upcoming':
+        return Colors.orange.shade100;
+      case 'Ongoing':
+        return Colors.blue.shade100;
+      case 'Completed':
+        return Colors.green.shade100;
+      case 'Cancelled':
+        return Colors.red.shade100;
+      default:
+        return Colors.grey.shade300;
+    }
+  }
+
+  List<Map<String, dynamic>> get _filtered {
+    if (_filter == 'All') return _list;
+    if (_filter == 'Arrived') return _list.where(_arrived).toList();
+    return _list.where((t) => _group(_s(t, 'status')) == _filter).toList();
+  }
+
   void _checkAlerts(List<Map<String, dynamic>> trips) {
     final fresh = <String>[];
     for (final t in trips) {
@@ -119,13 +159,6 @@ class _PickerHomeState extends State<PickerHome> {
     _showArrival(p);
   }
 
-  static Color _bg(String status) {
-    final u = status.toUpperCase();
-    if (u.contains('COMPLETE')) return Colors.green.shade100;
-    if (u.contains('CANCEL')) return Colors.red.shade100;
-    return Colors.orange.shade100;
-  }
-
   String _liveText(Map<String, dynamic> t) {
     final live = t['live'];
     if (live is! Map) return '';
@@ -134,11 +167,17 @@ class _PickerHomeState extends State<PickerHome> {
         : '${live['distanceM']} m away';
   }
 
+  Widget _chip(String key, String label) => ChoiceChip(
+    label: Text(label),
+    selected: _filter == key,
+    onSelected: (_) => setState(() => _filter = key),
+  );
+
   Widget _header(BuildContext context) {
     final counts = <String, int>{};
     for (final t in _list) {
-      final s = _s(t, 'status').isEmpty ? 'UNKNOWN' : _s(t, 'status');
-      counts[s] = (counts[s] ?? 0) + 1;
+      final g = _group(_s(t, 'status'));
+      counts[g] = (counts[g] ?? 0) + 1;
     }
     final arrived = _list.where(_arrived).length;
     return Container(
@@ -151,10 +190,11 @@ class _PickerHomeState extends State<PickerHome> {
         Text('Caspar ID: ${widget.prefs.getString('caspar_id')}'),
         const SizedBox(height: 10),
         Wrap(spacing: 8, runSpacing: 4, children: [
-          Chip(label: Text('Total ${_list.length}')),
-          Chip(label: Text('Arrived $arrived')),
-          for (final e in counts.entries)
-            Chip(label: Text('${e.key} ${e.value}')),
+          _chip('All', 'All ${_list.length}'),
+          _chip('Arrived', 'Arrived $arrived'),
+          for (final g in const ['Upcoming', 'Ongoing', 'Completed', 'Cancelled'])
+            _chip(g, '$g ${counts[g] ?? 0}'),
+          if ((counts['Other'] ?? 0) > 0) _chip('Other', 'Other ${counts['Other']}'),
         ]),
       ]),
     );
@@ -174,12 +214,16 @@ class _PickerHomeState extends State<PickerHome> {
     if (_list.isEmpty) {
       return const Center(child: Text('No trips for today'));
     }
+    final shown = _filtered;
+    if (shown.isEmpty) {
+      return const Center(child: Text('No trips in this group'));
+    }
     return RefreshIndicator(
       onRefresh: () => _load(),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(12, 12, 12, 88),
         children: [
-          for (final t in _list)
+          for (final t in shown)
             Card(
               child: ListTile(
                 isThreeLine: true,
@@ -193,7 +237,7 @@ class _PickerHomeState extends State<PickerHome> {
                         '${_liveText(t).isEmpty ? '' : '\n${_liveText(t)}'}'),
                 trailing: Chip(
                   label: Text(_s(t, 'status')),
-                  backgroundColor: _bg(_s(t, 'status')),
+                  backgroundColor: _groupColor(_group(_s(t, 'status'))),
                 ),
               ),
             ),
