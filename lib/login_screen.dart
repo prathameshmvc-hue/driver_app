@@ -6,6 +6,7 @@ import 'theme.dart';
 import 'sheet_logger.dart';
 import 'trips_repo.dart';
 
+
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
   @override
@@ -22,6 +23,26 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _submit() async {
     if (!_formKey.currentState!.validate()) return;
+    if (verifyTripAtLogin) {
+      try {
+        final ok = _role == 'driver'
+            ? await loginDriver(_c['trip_id']!.text.trim())
+            : await loginPicker(_c['darkstore_id']!.text.trim());
+        if (!ok) {
+          if (!mounted) return;
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(_role == 'driver'
+                  ? 'Trip ID not found'
+                  : 'Darkstore ID not found')));
+          return;
+        }
+      } catch (_) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('Cannot verify. Check internet and try again.')));
+        return;
+      }
+    }
     if (_role == 'driver' && verifyTripAtLogin) {
       try {
         final t = await fetchTrip(_c['trip_id']!.text.trim());
